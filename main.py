@@ -9,11 +9,11 @@ from youtubesearchpython import VideosSearch
 
 app = Flask('')
 @app.route('/')
+
 def home():
     return "Bot is online and healthy!"
 
 def run():
-    # Koyeb uses port 8000 by default for free tier
     app.run(host='0.0.0.0', port=8000)
 
 def keep_alive():
@@ -36,7 +36,6 @@ ytdl_format_options = {
     'cookiefile': 'cookies.txt',
     'noplaylist': True,
     'quiet': True,
-    'no_warnings': True,
     'source_address': '0.0.0.0',
     'extract_flat': False,
     'extractor_args': {'youtube': {'player_client': ['android', 'web']}},
@@ -46,8 +45,6 @@ ffmpeg_params = {
     'before_options': '-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5',
     'options': '-vn -b:a 192k',
 }
-
-ytdl = yt_dlp.YoutubeDL(ytdl_format_options)
 
 # -- UI Components (The Menu) -- 
 class MasterControlView(discord.ui.View):
@@ -129,9 +126,9 @@ async def play(ctx, *, search: str):
         await ctx.author.voice.channel.connect()
 
     async with ctx.typing():
+        # Get URL via manual search (Bypasses 400 Error)
         if "youtube.com" not in search and "youtu.be" not in search:
-            query = VideosSearch(search, limit=1)
-            results = query.result()
+            results = VideosSearch(search, limit=1).result()
             if not results['result']:
                 return await ctx.send("❌ No results found.")
             url = results['result'][0]['link']
@@ -140,14 +137,17 @@ async def play(ctx, *, search: str):
 
         try:
             info = ytdl.extract_info(url, download=False)
-            source_url = info['url']
-            title = info.get('title', 'Unknown Song')
+            data = {'url': info['url'], 'title': info.get('title', 'Unknown')}
             
-            # Use ffmpeg_params here to match your variable at the top
-            source = await discord.FFmpegOpusAudio.from_probe(source_url, **ffmpeg_params)
-            ctx.voice_client.play(source, after=lambda e: play_next(ctx, e))
-            
-            await ctx.send(f"🎶 Now playing: **{title}**")
+            # FIX: Check if something is already playing
+            if ctx.voice_client.is_playing() or ctx.voice_client.is_paused():
+                song_queue.append(data)
+                await ctx.send(f"📂 Added to queue: **{data['title']}**")
+            else:
+                song_history.append(data)
+                source = await discord.FFmpegOpusAudio.from_probe(data['url'], **ffmpeg_params)
+                ctx.voice_client.play(source, after=lambda e: play_next(ctx, e))
+                await ctx.send(f"🎶 Now playing: **{data['title']}**", view=MasterControlView(ctx))
         except Exception as e:
             await ctx.send(f"❌ Error: {str(e)}")
 
