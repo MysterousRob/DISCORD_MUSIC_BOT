@@ -32,17 +32,14 @@ song_queue = []
 song_history = []
 
 ytdl_format_options = {
-    'format': 'bestaudio/best/worst',
-    'cookiefile': 'cookies.txt',  # Ensure this matches your filename on GitHub
+    'format': 'bestaudio/best',
+    'cookiefile': 'cookies.txt',
     'noplaylist': True,
     'quiet': True,
     'no_warnings': True,
     'source_address': '0.0.0.0',
-    'postprocessors': [{
-        'key': 'FFmpegExtractAudio',
-        'preferredcodec': 'mp3',
-        'preferredquality': '192',
-    }],
+    'extract_flat': False,
+    'extractor_args': {'youtube': {'player_client': ['android', 'web']}},
 }
 
 ffmpeg_params = {
