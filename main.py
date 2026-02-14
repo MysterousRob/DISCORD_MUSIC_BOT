@@ -5,7 +5,7 @@ import asyncio
 from discord.ext import commands
 from flask import Flask
 from threading import Thread
-from youtube_title_search import get_id
+from youtubesearchpython import VideosSearch
 
 app = Flask('')
 @app.route('/')
@@ -48,7 +48,7 @@ ytdl_format_options = {
 
 ffmpeg_params = {
     'before_options': '-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5',
-    'options': '-vn -b:a 192k', # Forces high-quality bitrate for music
+    'options': '-vn -b:a 192k', 
 }
 
 ytdl = yt_dlp.YoutubeDL(ytdl_format_options)
@@ -99,7 +99,9 @@ class MasterControlView(discord.ui.View):
         await interaction.response.send_message("👋 Cleared and Left", ephemeral=True)
 
 # -- Helpers -- 
-def play_next(ctx):
+def play_next(ctx, error=None): 
+    if error:
+        print(f"Player error: {error}")
     if len(song_queue) > 0:
         next_song = song_queue.pop(0)
         song_history.append(next_song)
@@ -131,23 +133,26 @@ async def play(ctx, *, search: str):
         await ctx.author.voice.channel.connect()
 
     async with ctx.typing():
-        # BYPASS 400 ERROR: Search manually instead of letting yt-dlp do it
         if "youtube.com" not in search and "youtu.be" not in search:
-            video_id = get_id(search)
-            if not video_id:
+            query = VideosSearch(search, limit=1)
+            results = query.result()
+            if not results['result']:
                 return await ctx.send("❌ No results found.")
-            url = f"https://www.youtube.com/watch?v={video_id}"
+            url = results['result'][0]['link']
         else:
             url = search
+
         try:
-            # Extract info from the direct URL
             info = ytdl.extract_info(url, download=False)
             source_url = info['url']
             title = info.get('title', 'Unknown Song')
             
-            source = await discord.FFmpegOpusAudio.from_probe(source_url, **ffmpeg_options)
-            ctx.voice_client.play(source)
-            await ctx.send(f"🎶 Now playing: **{title}**")
+            source = await discord.FFmpegOpusAudio.from_probe(source_url, **ffmpeg_params)
+            
+            ctx.voice_client.play(source, after=lambda e: play_next(ctx, e))
+            
+            view = MasterControlView(ctx)
+            await ctx.send(f"🎶 Now playing: **{title}**", view=view)
         except Exception as e:
             await ctx.send(f"❌ Error: {str(e)}")
 
