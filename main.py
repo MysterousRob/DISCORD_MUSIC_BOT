@@ -123,7 +123,6 @@ async def on_ready():
 # -- Bot Commands --
 
 @bot.command(name='play')
-@bot.command(name='play')
 async def play(ctx, *, search: str):
     if not ctx.author.voice:
         return await ctx.send("Join a voice channel first!")
@@ -153,10 +152,6 @@ async def play(ctx, *, search: str):
             await ctx.send(f"🎶 Now playing: **{title}**")
         except Exception as e:
             await ctx.send(f"❌ Error: {str(e)}")
-
-# ... (Include your skip, previous, queue, and leave commands)
-
-bot.run(TOKEN)
 
 @bot.command(name='bassboost')
 async def bassboost(ctx, level: int = 15): 
