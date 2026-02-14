@@ -5,6 +5,24 @@ from discord.ext import commands
 import yt_dlp
 import asyncio
 
+from flask import Flask
+from threading import Thread
+
+app = Flask('')
+@app.route('/')
+def home():
+    return "Bot is alive!"
+
+def run():
+    # Koyeb uses port 8000 or 8080 by default
+    app.run(host='0.0.0.0', port=8000)
+
+# Starts the web server in a separate thread so it doesn't stop the bot
+Thread(target=run).start()
+
+
+
+
 load_dotenv()
 TOKEN = os.getenv('DISCORD_TOKEN')
 
