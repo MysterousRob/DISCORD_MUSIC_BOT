@@ -21,9 +21,6 @@ def keep_alive():
     t.start()
 
 
-
-
-load_dotenv()
 TOKEN = os.getenv('DISCORD_TOKEN')
 
 intents = discord.Intents.default()
