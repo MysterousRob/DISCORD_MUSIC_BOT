@@ -1,22 +1,24 @@
 import os
-from dotenv import load_dotenv
 import discord
-from discord.ext import commands
 import yt_dlp
 import asyncio
-
+from discord.ext import commands
 from flask import Flask
 from threading import Thread
+from youtubesearchpython import VideosSearch
 
 app = Flask('')
 @app.route('/')
 def home():
-    return "Bot is alive!"
+    return "Bot is online and healthy!"
 
 def run():
+    # Koyeb uses port 8000 by default for free tier
     app.run(host='0.0.0.0', port=8000)
 
-Thread(target=run).start()
+def keep_alive():
+    t = Thread(target=run)
+    t.start()
 
 
 
@@ -124,6 +126,7 @@ async def on_ready():
 # -- Bot Commands --
 
 @bot.command(name='play')
+@bot.command(name='play')
 async def play(ctx, *, search: str):
     if not ctx.author.voice:
         return await ctx.send("Join a voice channel first!")
@@ -132,38 +135,27 @@ async def play(ctx, *, search: str):
         await ctx.author.voice.channel.connect()
 
     async with ctx.typing():
+        # BYPASS 400 ERROR: Search manually instead of letting yt-dlp do it
+        if "youtube.com" not in search and "youtu.be" not in search:
+            query = VideosSearch(search, limit=1)
+            results = query.result()
+            if not results['result']:
+                return await ctx.send("❌ No results found.")
+            url = results['result'][0]['link']
+        else:
+            url = search
+
         try:
-            # Re-routing search to find 'Music' versions specifically
-            if "youtube.com" not in search and "youtu.be" not in search and "soundcloud.com" not in search:
-                # This string helps the bot find songs, not vlogs
-                search_query = f"{search} official audio"
-                info = ytdl.extract_info(f"ytsearch:{search_query}", download=False)['entries'][0]
-            else:
-                info = ytdl.extract_info(search, download=False)
-
-            # Strict Music Filter: Skip if video is too long (over 12 mins)
-            if info.get('duration', 0) > 720:
-                return await ctx.send("🛑 That file is too long for a music bot. Please request a song under 12 minutes.")
-
-            data = {'url': info['url'], 'title': info['title']}
-
-            if ctx.voice_client.is_playing():
-                song_queue.append(data)
-                await ctx.send(f"✅ Added to queue: **{data['title']}**")
-            else:
-                song_history.append(data)
-                await bot.change_presence(activity=discord.Activity(
-                    type=discord.ActivityType.listening, name=data['title']
-                ))
-                
-                source = await discord.FFmpegOpusAudio.from_probe(data['url'], **ffmpeg_params)
-                ctx.voice_client.play(source, after=lambda e: play_next(ctx))
-                
-                view = MasterControlView(ctx)
-                await ctx.send(f"🎶 Now playing: **{data['title']}**", view=view)
-        
+            # Extract info from the direct URL
+            info = ytdl.extract_info(url, download=False)
+            source_url = info['url']
+            title = info.get('title', 'Unknown Song')
+            
+            source = await discord.FFmpegOpusAudio.from_probe(source_url, **ffmpeg_options)
+            ctx.voice_client.play(source)
+            await ctx.send(f"🎶 Now playing: **{title}**")
         except Exception as e:
-            await ctx.send(f"❌ Error: {e}")
+            await ctx.send(f"❌ Error: {str(e)}")
 
 # ... (Include your skip, previous, queue, and leave commands)
 
@@ -218,4 +210,5 @@ async def leave(ctx):
         await bot.change_presence(activity=None)
         await ctx.send("Bye!")
 
+keep_alive()
 bot.run(TOKEN)
