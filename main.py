@@ -30,14 +30,12 @@ bot = commands.Bot(command_prefix=".", intents=intents)
 # -- Config --
 song_queue = []
 song_history = []
-
 ytdl_format_options = {
     'format': 'bestaudio/best',
-    'username': 'oauth2',
-    'password': '',
+    'cookiefile': 'cookies.txt',  # Ensure this matches your filename on GitHub
     'noplaylist': True,
     'quiet': True,
-    'default_search': 'ytsearch', # Changed to prioritize search
+    'no_warnings': True,
     'source_address': '0.0.0.0',
     'postprocessors': [{
         'key': 'FFmpegExtractAudio',
@@ -48,7 +46,7 @@ ytdl_format_options = {
 
 ffmpeg_params = {
     'before_options': '-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5',
-    'options': '-vn -b:a 192k', 
+    'options': '-vn -b:a 192k',
 }
 
 ytdl = yt_dlp.YoutubeDL(ytdl_format_options)
