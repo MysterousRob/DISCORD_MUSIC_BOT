@@ -5,7 +5,7 @@ import asyncio
 from discord.ext import commands
 from flask import Flask
 from threading import Thread
-from youtubesearchpython import VideosSearch
+from youtube_title_search import get_id
 
 app = Flask('')
 @app.route('/')
@@ -133,14 +133,12 @@ async def play(ctx, *, search: str):
     async with ctx.typing():
         # BYPASS 400 ERROR: Search manually instead of letting yt-dlp do it
         if "youtube.com" not in search and "youtu.be" not in search:
-            query = VideosSearch(search, limit=1)
-            results = query.result()
-            if not results['result']:
+            video_id = get_id(search)
+            if not video_id:
                 return await ctx.send("❌ No results found.")
-            url = results['result'][0]['link']
+            url = f"https://www.youtube.com/watch?v={video_id}"
         else:
             url = search
-
         try:
             # Extract info from the direct URL
             info = ytdl.extract_info(url, download=False)

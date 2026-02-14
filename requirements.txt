@@ -3,5 +3,4 @@ yt-dlp
 python-dotenv
 pynacl
 flask
-yt-dlp-youtube-oauth2
-youtube-search-python
+youtube-title-search
