@@ -3,3 +3,4 @@ yt-dlp
 python-dotenv
 pynacl
 flask
+yt-dlp-youtube-oauth2

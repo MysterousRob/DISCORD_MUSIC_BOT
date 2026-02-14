@@ -34,6 +34,8 @@ song_history = []
 
 ytdl_format_options = {
     'format': 'bestaudio/best',
+    'username': 'oauth2',
+    'password': '',
     'noplaylist': True,
     'quiet': True,
     'default_search': 'ytsearch', # Changed to prioritize search
