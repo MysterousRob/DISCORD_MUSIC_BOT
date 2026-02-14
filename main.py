@@ -30,8 +30,9 @@ bot = commands.Bot(command_prefix=".", intents=intents)
 # -- Config --
 song_queue = []
 song_history = []
+
 ytdl_format_options = {
-    'format': 'bestaudio/best',
+    'format': 'bestaudio/best/worst',
     'cookiefile': 'cookies.txt',  # Ensure this matches your filename on GitHub
     'noplaylist': True,
     'quiet': True,
@@ -145,12 +146,11 @@ async def play(ctx, *, search: str):
             source_url = info['url']
             title = info.get('title', 'Unknown Song')
             
+            # Use ffmpeg_params here to match your variable at the top
             source = await discord.FFmpegOpusAudio.from_probe(source_url, **ffmpeg_params)
-            
             ctx.voice_client.play(source, after=lambda e: play_next(ctx, e))
             
-            view = MasterControlView(ctx)
-            await ctx.send(f"🎶 Now playing: **{title}**", view=view)
+            await ctx.send(f"🎶 Now playing: **{title}**")
         except Exception as e:
             await ctx.send(f"❌ Error: {str(e)}")
 
