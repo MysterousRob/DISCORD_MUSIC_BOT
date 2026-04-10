@@ -6,6 +6,9 @@ from discord.ext import commands
 from flask import Flask
 from threading import Thread
 from youtubesearchpython import VideosSearch
+from dotenv import load_dotenv  
+
+load_dotenv()
 
 app = Flask('')
 @app.route('/')
@@ -85,8 +88,11 @@ class MasterControlView(discord.ui.View):
 
     @discord.ui.button(label="Skip", style=discord.ButtonStyle.primary, emoji="⏭️", row=1)
     async def skip_button(self, interaction, button):
-        self.ctx.voice_client.stop()
-        await interaction.response.send_message("⏭️ Skipped!", ephemeral=True)
+        if self.ctx.voice_client:
+            self.ctx.voice_client.stop()
+            await interaction.response.send_message("⏭️ Skipped!", ephemeral=True)
+        else:
+            await interaction.response.send_message("❌ Bot is not in voice.", ephemeral=True)
 
     @discord.ui.button(label="Stop & Leave", style=discord.ButtonStyle.danger, emoji="⏹️", row=1)
     async def stop_button(self, interaction, button):
@@ -98,6 +104,7 @@ class MasterControlView(discord.ui.View):
 def play_next(ctx, error=None): 
     if error:
         print(f"Player error: {error}")
+    
     if len(song_queue) > 0:
         next_song = song_queue.pop(0)
         song_history.append(next_song)
@@ -106,11 +113,15 @@ def play_next(ctx, error=None):
             type=discord.ActivityType.listening, name=next_song['title']
         )))
         
-        source = discord.FFmpegOpusAudio.from_probe(next_song['url'], **ffmpeg_params)
-        ctx.voice_client.play(source, after=lambda e: play_next(ctx))
-        
-        view = MasterControlView(ctx)
-        bot.loop.create_task(ctx.send(f"🎶 Now playing: **{next_song['title']}**", view=view))
+        async def start_playing():
+            await asyncio.sleep(0.5) 
+            source = await discord.FFmpegOpusAudio.from_probe(next_song['url'], **ffmpeg_params)
+            ctx.voice_client.play(source, after=lambda e: play_next(ctx, e))
+            
+            view = MasterControlView(ctx)
+            await ctx.send(f"🎶 Now playing: **{next_song['title']}**", view=view)
+
+        bot.loop.create_task(start_playing())
     else:
         bot.loop.create_task(bot.change_presence(activity=None))
 
@@ -142,7 +153,6 @@ async def play(ctx, *, search: str):
             info = ytdl.extract_info(url, download=False)
             data = {'url': info['url'], 'title': info.get('title', 'Unknown')}
             
-            # FIX: Check if something is already playing
             if ctx.voice_client.is_playing() or ctx.voice_client.is_paused():
                 song_queue.append(data)
                 await ctx.send(f"📂 Added to queue: **{data['title']}**")
@@ -166,9 +176,11 @@ async def bassboost(ctx, level: int = 15):
 
 @bot.command(name='skip')
 async def skip(ctx):
-    if ctx.voice_client and ctx.voice_client.is_playing():
-        ctx.voice_client.stop()
-        await ctx.send("Skipped!!!!!")
+    if ctx.voice_client and (ctx.voice_client.is_playing() or ctx.voice_client.is_paused()):
+        ctx.voice_client.stop() 
+        await ctx.send("⏭️ Skipped!")
+    else:
+        await ctx.send("❌ Nothing is playing right now.")
 
 @bot.command(name='previous')
 async def previous(ctx):
