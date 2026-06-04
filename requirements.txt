@@ -3,5 +3,6 @@ yt-dlp
 python-dotenv
 pynacl
 flask
+lyricsgenius
 youtube-search-python
 httpx==0.27.2
