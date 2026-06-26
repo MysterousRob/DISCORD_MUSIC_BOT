@@ -87,36 +87,33 @@ def play_next(ctx, error=None):
     if is_swapping:
         is_swapping = False
         return
-    
+
+    # 1. Logic to get the next song
+    next_song = None
     if len(song_queue) > 0:
         next_song = song_queue.pop(0)
     else:
-        # --- AUTOPLAY ---
-        if not current_song_data:
-            return  
-            
-        search = VideosSearch(f"related to {current_song_data['title']}", limit=1)
-        result = search.result()['result'][0]
-        next_song = {
-            'url': result['link'], 
-            'title': result['title'], 
-            'duration': 300 
-        }
-
-    current_song_data = next_song
-    current_song_start_time = time.time()
+        # Autoplay logic only if we have a previous song
+        if current_song_data:
+            search = VideosSearch(f"related to {current_song_data['title']}", limit=1)
+            result = search.result()['result'][0]
+            next_song = {'url': result['link'], 'title': result['title'], 'duration': 300}
     
-    async def start_playing():
+    # 2. If we found a song, play it. If not, stop everything.
+    if next_song:
+        current_song_data = next_song
+        current_song_start_time = time.time()
+        bot.loop.create_task(start_playing_task(ctx, next_song))
+    else:
+        current_song_data = None
+    
+    async def start_playing_task(ctx, next_song):
         source = await discord.FFmpegOpusAudio.from_probe(next_song['url'], **ffmpeg_params)
         ctx.voice_client.play(source, after=lambda e: play_next(ctx, e))
-        
+
         view = EnhancementSliderView(
-            ctx, 
-            ffmpeg_params, 
-            song_queue, 
-            apply_live_filter, 
-            current_song_data, 
-            current_song_start_time
+            ctx, ffmpeg_params, song_queue, apply_live_filter, 
+            next_song, time.time()
         )
         await ctx.send(embed=view.get_embed(), view=view)
 
@@ -170,7 +167,7 @@ async def setup(ctx):
         await ctx.send("❌ Channel already exists.")
 
 
-@bot.hybrid_command(name='play', aliases=['p'], description="Play music or search YouTube")
+@bot.hybrid_command(name='play', aliases=['pl'], description="Play music or search YouTube")
 async def play(ctx, *, search: str):
     global current_song_data, current_song_start_time 
     
@@ -203,7 +200,6 @@ async def play(ctx, *, search: str):
 
         try:
             info = ytdl.extract_info(url, download=False)
-            # Extracted duration added for the progress bar calculations
             data = {
                 'url': info['url'], 
                 'title': info.get('title', 'Unknown'),
@@ -220,7 +216,6 @@ async def play(ctx, *, search: str):
                 source = await discord.FFmpegOpusAudio.from_probe(data['url'], **ffmpeg_params)
                 ctx.voice_client.play(source, after=lambda e: play_next(ctx, e))
                 
-                # FIX: Added missing arguments in the correct matching order
                 view = EnhancementSliderView(
                     ctx, 
                     ffmpeg_params, 

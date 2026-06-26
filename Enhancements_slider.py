@@ -17,7 +17,7 @@ class EnhancementSliderView(discord.ui.View):
         self.muffle_level = 5000
         self.is_8d = False
         self.is_reverb = False
-        self.loop_mode = "None"# Options: None, Song,
+        self.loop_mode = "None"
 
     def create_progress_bar(self):
         """Calculates 01:45 / 03:20 style progress."""
