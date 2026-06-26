@@ -40,6 +40,7 @@ song_history = []
 current_song_data = None      
 current_song_start_time = 0   
 is_swapping = False
+disconnect_timer = None
 
 ytdl_format_options = {
     'format': 'bestaudio/best',
@@ -58,68 +59,81 @@ ffmpeg_params = {
 }
 
 # -- Helpers -- 
-async def apply_live_filter(ctx):
-    global current_song_start_time, current_song_data, is_swapping
+async def silent_disconnect(ctx):
+    await asyncio.sleep(120) # 2 minutes
+    if ctx.voice_client and not ctx.voice_client.is_playing():
+        await ctx.voice_client.disconnect()
 
-    if not ctx.voice_client or not current_song_data:
-        return
-
-    elapsed = time.time() - current_song_start_time
-    is_swapping = True
-    
-    if ctx.voice_client.is_playing() or ctx.voice_client.is_paused():
-        ctx.voice_client.stop()
-        await asyncio.sleep(0.2)
-
-    live_params = ffmpeg_params.copy()
-    live_params['before_options'] = f"-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5 -ss {elapsed}"
-
-    source = await discord.FFmpegOpusAudio.from_probe(current_song_data['url'], **live_params)
-    ctx.voice_client.play(source, after=lambda e: play_next(ctx, e))
-    current_song_start_time = time.time() - elapsed
-
-def play_next(ctx, error=None): 
-    global current_song_data, current_song_start_time, is_swapping
-    
-    if error:
-        print(f"Player error: {error}")
-    
-    if is_swapping:
-        is_swapping = False
-        return
-
-    # 1. Logic to get the next song
-    next_song = None
-    if len(song_queue) > 0:
-        next_song = song_queue.pop(0)
-    else:
-        # Autoplay logic only if we have a previous song
-        if current_song_data:
-            search = VideosSearch(f"related to {current_song_data['title']}", limit=1)
-            result = search.result()['result'][0]
-            next_song = {'url': result['link'], 'title': result['title'], 'duration': 300}
-    
-    # 2. If we found a song, play it. If not, stop everything.
-    if next_song:
-        current_song_data = next_song
-        current_song_start_time = time.time()
-        bot.loop.create_task(start_playing_task(ctx, next_song))
-    else:
-        current_song_data = None
-    
-    async def start_playing_task(ctx, next_song):
-        source = await discord.FFmpegOpusAudio.from_probe(next_song['url'], **ffmpeg_params)
+async def start_playing_task(ctx, next_song):
+    try:
+        # Extract the direct, playable stream URL
+        info = ytdl.extract_info(next_song['url'], download=False)
+        stream_url = info['url']
+        
+        # Probe the direct stream, not the YouTube page
+        source = await discord.FFmpegOpusAudio.from_probe(stream_url, **ffmpeg_params)
         ctx.voice_client.play(source, after=lambda e: play_next(ctx, e))
-
+        
         view = EnhancementSliderView(
             ctx, ffmpeg_params, song_queue, apply_live_filter, 
             next_song, time.time()
         )
         await ctx.send(embed=view.get_embed(), view=view)
+    except Exception as e:
+        print(f"Playback error: {e}")
+        await ctx.send("❌ Error starting stream. Skipping...")
+        play_next(ctx)
+        
+async def apply_live_filter(ctx):
+    global current_song_start_time, current_song_data, is_swapping
+    if not ctx.voice_client or not current_song_data: 
+        return
+    elapsed = time.time() - current_song_start_time
+    is_swapping = True
+    if ctx.voice_client.is_playing() or ctx.voice_client.is_paused():
+        ctx.voice_client.stop()
+        await asyncio.sleep(0.2)
+    live_params = ffmpeg_params.copy()
+    live_params['before_options'] = f"-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5 -ss {elapsed}"
+    source = await discord.FFmpegOpusAudio.from_probe(current_song_data['url'], **live_params)
+    ctx.voice_client.play(source, after=lambda e: play_next(ctx, e))
+    current_song_start_time = time.time() - elapsed
 
-    bot.loop.create_task(start_playing())
-
+def play_next(ctx, error=None): 
+    global current_song_data, current_song_start_time, is_swapping, disconnect_timer
+    if error: 
+        print(f"Player error: {error}")
+        
+    if is_swapping:
+        is_swapping = False
+        return
     
+    if disconnect_timer:
+        disconnect_timer.cancel()
+        disconnect_timer = None
+
+    next_song = None
+    if len(song_queue) > 0:
+        next_song = song_queue.pop(0)
+    elif current_song_data:
+        try:
+            search = VideosSearch(f"related to {current_song_data['title']}", limit=1)
+            result = search.result()['result']
+            
+            for res in results:
+                if res['link'] != current_song_data['url']:
+                    next_song = {'url': result['link'], 'title': result['title'], 'duration': 300}
+                    break
+        except: 
+            next_song = None
+    
+    if next_song:
+        current_song_data = next_song
+        bot.loop.create_task(start_playing_task(ctx, next_song))
+    else:
+        current_song_data = None
+        disconnect_timer = bot.loop.create_task(silent_disconnect(ctx))
+
 @bot.event
 async def on_ready():
     await bot.tree.sync()
@@ -169,14 +183,18 @@ async def setup(ctx):
 
 @bot.hybrid_command(name='play', aliases=['pl'], description="Play music or search YouTube")
 async def play(ctx, *, search: str):
-    global current_song_data, current_song_start_time 
+    global current_song_data, current_song_start_time, disconnect_timer
     
     if not ctx.author.voice:
         return await ctx.send("Join a voice channel first!")
     
     if not ctx.voice_client:
         await ctx.author.voice.channel.connect()
-
+        
+    if disconnect_timer:
+        disconnect_timer.cancel()
+        disconnect_timer = None
+        
     async with ctx.typing():
         search_query = search.strip()
         is_link = search_query.startswith("http")
@@ -212,7 +230,8 @@ async def play(ctx, *, search: str):
             else:
                 song_history.append(data)
                 current_song_data = data
-                current_song_start_time = time.time() 
+                current_song_start_time = time.time()
+                
                 source = await discord.FFmpegOpusAudio.from_probe(data['url'], **ffmpeg_params)
                 ctx.voice_client.play(source, after=lambda e: play_next(ctx, e))
                 
