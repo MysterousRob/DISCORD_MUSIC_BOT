@@ -10,6 +10,7 @@ from youtubesearchpython import VideosSearch
 from dotenv import load_dotenv
 
 from Enhancements_slider import EnhancementSliderView
+from bot_ui import setup_booth, update_control_panel
 
 load_dotenv()
 
@@ -41,6 +42,7 @@ current_song_data = None
 current_song_start_time = 0   
 is_swapping = False
 disconnect_timer = None
+control_message = None
 
 ytdl_format_options = {
     'format': 'bestaudio/best',
@@ -66,11 +68,9 @@ async def silent_disconnect(ctx):
 
 async def start_playing_task(ctx, next_song):
     try:
-        # Extract the direct, playable stream URL
         info = ytdl.extract_info(next_song['url'], download=False)
         stream_url = info['url']
         
-        # Probe the direct stream, not the YouTube page
         source = await discord.FFmpegOpusAudio.from_probe(stream_url, **ffmpeg_params)
         ctx.voice_client.play(source, after=lambda e: play_next(ctx, e))
         
@@ -78,12 +78,16 @@ async def start_playing_task(ctx, next_song):
             ctx, ffmpeg_params, song_queue, apply_live_filter, 
             next_song, time.time()
         )
-        await ctx.send(embed=view.get_embed(), view=view)
+        control_message = await ctx.send(embed=view.get_embed(), view=view)
+        
     except Exception as e:
         print(f"Playback error: {e}")
         await ctx.send("❌ Error starting stream. Skipping...")
         play_next(ctx)
         
+async def update_dashboard(self, interaction):
+    await self.control_message.edit(embed=self.get_embed(), view=self)
+
 async def apply_live_filter(ctx):
     global current_song_start_time, current_song_data, is_swapping
     if not ctx.voice_client or not current_song_data: 
@@ -139,46 +143,11 @@ async def on_ready():
     await bot.tree.sync()
     print(f'Bot is online as {bot.user}')
 
-@bot.event
-async def on_guild_join(guild):
-    category = discord.utils.get(guild.categories, name="MUSIC BOTS")
-    if category is None:
-        category = await guild.create_category("MUSIC BOTS")
-
-    channel_name = "creampie-control"
-    channel = discord.utils.get(guild.text_channels, name=channel_name)
-
-    if not channel:
-        overwrites = {
-            guild.default_role: discord.PermissionOverwrite(send_messages=True, read_messages=True),
-            guild.me: discord.PermissionOverwrite(send_messages=True, manage_messages=True)
-        }
-        channel = await guild.create_text_channel(channel_name, category=category, overwrites=overwrites)
-        await channel.send(embed=get_help_embed())
-
 # -- Bot Commands --
 @bot.command()
 @commands.has_permissions(administrator=True)
 async def setup(ctx):
-    """Manually triggers the auto-channel creation logic."""
-    guild = ctx.guild
-    category = discord.utils.get(guild.categories, name="MUSIC BOTS")
-    if category is None:
-        category = await guild.create_category("MUSIC BOTS")
-
-    channel_name = "creampie-control"
-    channel = discord.utils.get(guild.text_channels, name=channel_name)
-
-    if not channel:
-        overwrites = {
-            guild.default_role: discord.PermissionOverwrite(send_messages=True, read_messages=True),
-            guild.me: discord.PermissionOverwrite(send_messages=True, manage_messages=True)
-        }
-        channel = await guild.create_text_channel(channel_name, category=category, overwrites=overwrites)
-        await channel.send(embed=get_help_embed())
-        await ctx.send("✅ DJ Booth created!")
-    else:
-        await ctx.send("❌ Channel already exists.")
+    await setup_booth(ctx, get_help_embed)
 
 
 @bot.hybrid_command(name='play', aliases=['pl'], description="Play music or search YouTube")
