@@ -24,7 +24,7 @@ Before installing the bot, make sure you have:
 Clone the project using Git:
 
 ```bash
-git clone <REPOSITORY_URL>
+git clone https://github.com/MysterousRob/CUM_STAINZ_DISCORD_MUSIC_BOT.git
 ```
 
 Enter the project directory:
